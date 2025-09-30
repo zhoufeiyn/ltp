@@ -7,7 +7,7 @@ num_actions: int = 46
 num_frames: int = 4
 model_name: str = "df_z32_c1_dit_n11_mario_km_tanh_ldm"
 
-
+checkpoint_path: str= "ckpt/model.pth"
 out_dir: str = "./output"
 data_path: str = "./datatrain"
 
