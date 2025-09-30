@@ -220,6 +220,7 @@ def train():
     model_name = cfg.model_name
     model_config = ConfigDF(model_name=model_name)
     model = DiffusionForcingBase(model_config, device_obj)
+    model = model.to(device_obj)  # 确保模型完全在GPU上
 
 
     vae = AutoencoderKL(image_key='observations')
@@ -227,6 +228,8 @@ def train():
     vae.eval()
     epochs, lr, batch_size = cfg.epochs, cfg.lr, cfg.batch_size
     opt = torch.optim.AdamW(model.parameters(), lr)  # 只优化diffusion模型
+    print(f"   模型设备: {next(model.parameters()).device}")
+    print(f"   优化器参数数量: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
     print("2.VAE encoding images to latent space")
     # 将图像编码到潜在空间: [batch_size, num_frames, 3, 128, 128] -> [batch_size, num_frames, 4, 32, 32]
@@ -261,10 +264,16 @@ def train():
             # 获取当前批次的数据
             end_idx = min(i + batch_size, num_videos)
             current_batch = [
-                batch_data[0][i:end_idx],  # images: [batch_size, num_frames, c, h, w] - 已在GPU上
+                batch_data[0][i:end_idx].to(device),  # images: [batch_size, num_frames, c, h, w]
                 batch_data[1][i:end_idx].to(device),  # actions: [batch_size, num_frames, action_dim]
                 batch_data[2][i:end_idx].to(device)   # nonterminals: [batch_size, num_frames]
             ]
+            
+            # 确保所有数据都在同一设备上
+            print(f"   Batch设备检查:")
+            print(f"     images device: {current_batch[0].device}")
+            print(f"     actions device: {current_batch[1].device}")
+            print(f"     nonterminals device: {current_batch[2].device}")
             
             # 训练步骤
             try:
