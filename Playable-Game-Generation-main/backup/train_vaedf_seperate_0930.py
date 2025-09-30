@@ -25,6 +25,8 @@ import imageio
 from model import get_model, get_data, get_web_img
 
 device: str = "cuda" if torch.cuda.is_available() else "cpu"
+
+
 # -----------------------------
 # Custom Dataset for Mario Data
 # -----------------------------
@@ -34,24 +36,26 @@ class MarioDataset(Dataset):
      __getitem__  will return image and corresponding action"""
     """up to date: 2025-09-20 only load all frames in one directory,
      return array ofimages and actions"""
+
     def __init__(self, data_path: str, image_size):
         self.data_path = data_path
         self.image_size = image_size
-        self.image_files = [] # image files path (xxx.png)
-        self.actions = [] # action (0-255)
+        self.image_files = []  # image files path (xxx.png)
+        self.actions = []  # action (0-255)
         self._load_data()
         self.transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
             transforms.Normalize(0.5, 0.5),  # [-1, 1]
         ])
+
     def _load_data(self):
         """load all png files and corresponding actions"""
         print(f"🔍 data path is scanning: {self.data_path}")
-        if not os.path.exists(self.data_path): 
+        if not os.path.exists(self.data_path):
             print(f"❌ data path not found: {self.data_path}")
             return
-        
+
         total_files = 0
         valid_files = 0
 
@@ -62,7 +66,7 @@ class MarioDataset(Dataset):
                 if file.lower().endswith('.png'):
                     total_files += 1
                     file_path = os.path.join(root, file)
-                    
+
                     # 尝试从文件名提取动作
                     action = self._extract_action_from_filename(file)
                     if action is not None:
@@ -80,32 +84,34 @@ class MarioDataset(Dataset):
         if match:
             return [int(match.group(1))]
         return None
+
     def __len__(self):
         return len(self.image_files)
-    
+
     def __getitem__(self, idx):
         """get the data sample of the specified index"""
         if idx >= len(self.image_files):
             raise IndexError(f"Index {idx} out of range for dataset of size {len(self.image_files)}")
-        
+
         # 加载图像
         image_path = self.image_files[idx]
         image = Image.open(image_path).convert('RGB')
         image = self.transform(image)
-        
+
         # 获取动作（如果有的话）
         action = self.actions[idx] if idx < len(self.actions) else 0
-        
+
         return image, action
+
 
 def map_Key_to_Action(key) -> int:
     """map key(s) to action based on SMB dataset encoding:
-    A=128(jump), up=64(climb), left=32, B=16(run/fire), 
+    A=128(jump), up=64(climb), left=32, B=16(run/fire),
     start=8, right=4, down=2, select=1
-    
+
     Args:
         key: str or list of str - single key or list of pressed keys
-    
+
     Examples:
         map_Key_to_Action("r") -> 4 (right)
         map_Key_to_Action(["r", "f"]) -> 20 (right + B = running right)
@@ -116,9 +122,9 @@ def map_Key_to_Action(key) -> int:
         keys = [key]
     else:
         keys = key
-    
+
     action = 0
-    
+
     # 遍历所有按下的键，累加动作值
     for k in keys:
         if k == "r" or k == "right" or k == "→":
@@ -137,33 +143,35 @@ def map_Key_to_Action(key) -> int:
             action += 2  # down
         elif k == "enter":
             action += 1  # select
-    
+
     return action
+
 
 def build_video_sequence(dataset, num_frames):
     """build video sequence from dataset"""
     total_samples = len(dataset)
-    
+
     # 检查是否有足够的数据
     if total_samples < num_frames:
         print(f"❌ dataset not enough: need at least {num_frames} samples, but only {total_samples} samples")
         return
-    
+
     # 计算可以创建多少个完整的视频序列
     num_videos = total_samples // num_frames
-    print(f"dataset loaded: {total_samples} samples, construct {num_videos} complete video sequences, each video has {num_frames} frames")
-    
+    print(
+        f"dataset loaded: {total_samples} samples, construct {num_videos} complete video sequences, each video has {num_frames} frames")
+
     # 存储所有视频序列的数据
     all_video_images = []  # 存储所有视频的图像
     all_video_actions = []  # 存储所有视频的动作
     all_video_nonterminals = []  # 存储所有视频的nonterminals
-    
+
     # 创建多个视频序列
     for video_idx in range(num_videos):
         video_images = []  # 存储当前视频的8帧图像
         video_actions = []  # 存储当前视频的8个动作
         video_nonterminals = []  # 存储当前视频的8个nonterminals
-        
+
         # 构建当前视频序列
         start_idx = video_idx * num_frames
         for frame_idx in range(num_frames):
@@ -172,28 +180,25 @@ def build_video_sequence(dataset, num_frames):
             video_images.append(image)  # image shape: [3, 128, 128]
             video_actions.append(action[0])  # action是列表，取第一个元素
             video_nonterminals.append(True)  # 先都默认True
-        
 
-        
         # 转换为tensor并组织成目标格式
         # [num_frames, channels, h, w] = [8, 3, 128, 128]
         images_tensor = torch.stack(video_images, dim=0)  # [8, 3, 128, 128]
         images_tensor = images_tensor.unsqueeze(0)  # [1, 8, 3, 128, 128]
-        
+
         # [batch_size, num_frames, action_dim] = [1, 8, 1]
         actions_tensor = torch.tensor(video_actions, dtype=torch.long)  # [8]
         actions_tensor = actions_tensor.unsqueeze(0).unsqueeze(-1)  # [1, 8, 1]
-        
+
         # [batch_size, num_frames] = [1, 8]
         nonterminals_tensor = torch.tensor(video_nonterminals, dtype=torch.bool)  # [8]
         nonterminals_tensor = nonterminals_tensor.unsqueeze(0)  # [1, 8]
-        
+
         # 添加到总列表中
         all_video_images.append(images_tensor)
         all_video_actions.append(actions_tensor)
         all_video_nonterminals.append(nonterminals_tensor)
-        
-    
+
     # 合并所有视频序列数据
     # 最终格式: [num_videos, num_frames, channels, h, w]
     batch_data = [
@@ -204,8 +209,9 @@ def build_video_sequence(dataset, num_frames):
     print(f"1.build video sequence completed")
     print(f"   batch_data[0] (images): {batch_data[0].shape}")  # [num_videos, 8, 3, 128, 128]
     print(f"   batch_data[1] (actions): {batch_data[1].shape}")  # [num_videos, 8, 1]
-    print(f"   batch_data[2] (nonterminals): {batch_data[2].shape}")  # [num_videos, 8]   
+    print(f"   batch_data[2] (nonterminals): {batch_data[2].shape}")  # [num_videos, 8]
     return batch_data
+
 
 def train():
     device_obj = torch.device(device)
@@ -219,51 +225,16 @@ def train():
 
     model_name = cfg.model_name
     model_config = ConfigDF(model_name=model_name)
-    
-    # 使用Algorithm类加载完整的预训练模型（包含VAE和Diffusion）
-    from network.df.algorithm import Algorithm
-    model = Algorithm(model_name, device_obj)
-    
-    # 加载预训练checkpoint
-    checkpoint_path = "ckpt/model.pth"  # 根据您的实际路径调整
-    if os.path.exists(checkpoint_path):
-        print(f"📥 加载预训练checkpoint: {checkpoint_path}")
-        state_dict = torch.load(checkpoint_path, map_location=device_obj, weights_only=False)
-        model.load_state_dict(state_dict['network_state_dict'], strict=False)
-        print("✅ Checkpoint加载成功！")
-    else:
-        print(f"⚠️ Checkpoint文件不存在: {checkpoint_path}")
-        print("🔄 使用随机初始化的模型")
-    
-    model = model.to(device_obj)
-    model.eval()  # 设置为评估模式，但允许训练
-    
-    # 获取VAE和Diffusion模型
-    vae = model.vae if hasattr(model, 'vae') else None
-    diffusion_model = model.df_model
-    
-    if vae is not None:
-        vae.eval()
-        print("✅ VAE模型已加载")
-    else:
-        print("⚠️ 没有找到VAE模型")
+    model = DiffusionForcingBase(model_config, device_obj)
+    model = model.to(device_obj)  # 确保模型完全在GPU上
+
+    vae = AutoencoderKL(image_key='observations')
+    vae = vae.to(device_obj)
+    vae.eval()
     epochs, lr, batch_size = cfg.epochs, cfg.lr, cfg.batch_size
-    
-    # 只优化diffusion模型，冻结VAE
-    if vae is not None:
-        # 冻结VAE参数
-        for param in vae.parameters():
-            param.requires_grad = False
-        print("🔒 VAE参数已冻结")
-    
-    # 只优化diffusion模型参数
-    diffusion_params = list(diffusion_model.parameters())
-    opt = torch.optim.AdamW(diffusion_params, lr)
-    
+    opt = torch.optim.AdamW(model.parameters(), lr)  # 只优化diffusion模型
     print(f"   模型设备: {next(model.parameters()).device}")
-    print(f"   Diffusion参数数量: {sum(p.numel() for p in diffusion_params if p.requires_grad)}")
-    if vae is not None:
-        print(f"   VAE参数数量: {sum(p.numel() for p in vae.parameters())} (已冻结)")
+    print(f"   优化器参数数量: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
     print("2.VAE encoding images to latent space")
     # 将图像编码到潜在空间: [batch_size, num_frames, 3, 128, 128] -> [batch_size, num_frames, 4, 32, 32]
@@ -271,37 +242,27 @@ def train():
         batch_size_videos, num_frames, channels, h, w = batch_data[0].shape
         # 重塑为 [batch_size * num_frames, 3, 128, 128] 进行批量编码
         images_flat = batch_data[0].reshape(-1, channels, h, w).to(device)
-        
+
         # VAE编码
-        if vae is not None:
-            print(f"   输入图像形状: {images_flat.shape}")
-            latent_dist = vae.encode(images_flat)
-            latent_images = latent_dist.sample()  # 采样潜在表示
-            print(f"   VAE编码后形状: {latent_images.shape}")
-            # 使用正确的缩放因子
-            from network.df.config.Config import Config
-            latent_images = latent_images * Config.scale_factor  # 0.64
-            print(f"   使用缩放因子: {Config.scale_factor}")
-            
-            # 重塑回 [batch_size, num_frames, 4, 32, 32]
-            latent_images = latent_images.reshape(batch_size_videos, num_frames, 4, 32, 32)
-            print(f"   重塑后形状: {latent_images.shape}")
-        else:
-            print("⚠️ 没有VAE模型，使用原始图像")
-            # 如果没有VAE，直接使用原始图像，但需要调整形状
-            latent_images = images_flat.reshape(batch_size_videos, num_frames, channels, h, w)
-            print(f"   使用原始图像形状: {latent_images.shape}")
-        
+        print(f"   输入图像形状: {images_flat.shape}")
+        latent_dist = vae.encode(images_flat)
+        latent_images = latent_dist.sample()  # 采样潜在表示
+        print(f"   VAE编码后形状: {latent_images.shape}")
+        latent_images = latent_images * 0.18215  # 缩放因子，如果VAE缩放因子有问题，尝试不同的值（0.18215, 1.0, 0.5等）
+
+        # 重塑回 [batch_size, num_frames, 4, 32, 32]
+        latent_images = latent_images.reshape(batch_size_videos, num_frames, 4, 32, 32)
+        print(f"   重塑后形状: {latent_images.shape}")
+
         # 更新batch_data[0]为编码后的潜在表示，保持在GPU上
         batch_data[0] = latent_images
 
-
     print("3.start training")
     num_videos = batch_data[0].shape[0]  # 总视频数量
-    
+
     for epoch in range(epochs):
         total_loss = 0
-        
+
         # 遍历所有视频序列
         for i in range(0, num_videos, batch_size):
             # 获取当前批次的数据
@@ -309,33 +270,37 @@ def train():
             current_batch = [
                 batch_data[0][i:end_idx].to(device),  # images: [batch_size, num_frames, c, h, w]
                 batch_data[1][i:end_idx].to(device),  # actions: [batch_size, num_frames, action_dim]
-                batch_data[2][i:end_idx].to(device)   # nonterminals: [batch_size, num_frames]
+                batch_data[2][i:end_idx].to(device)  # nonterminals: [batch_size, num_frames]
             ]
-            
+
             # 确保所有数据都在同一设备上
-            
+            print(f"   Batch设备检查:")
+            print(f"     images device: {current_batch[0].device}")
+            print(f"     actions device: {current_batch[1].device}")
+            print(f"     nonterminals device: {current_batch[2].device}")
+
             # 训练步骤
             try:
-                out_dict = diffusion_model.training_step(current_batch)
+                out_dict = model.training_step(current_batch)
                 loss = out_dict["loss"]
-                
+
                 # 反向传播
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
-                
+
                 total_loss += loss.item()
-                print(f"   Batch {i//batch_size + 1}, Loss: {loss.item():.6f}")
-                
+                print(f"   Batch {i // batch_size + 1}, Loss: {loss.item():.6f}")
+
             except Exception as e:
                 print(f"   ❌ 训练步骤出错: {e}")
                 print(f"   current_batch shapes:")
                 print(f"     images: {current_batch[0].shape}")
                 print(f"     actions: {current_batch[1].shape}")
                 print(f"     nonterminals: {current_batch[2].shape}")
-                raise e        
+                raise e
         avg_loss = total_loss / (num_videos // batch_size + (1 if num_videos % batch_size else 0))
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.6f}")
+        print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.6f}")
     print("Training completed!")
 
 
