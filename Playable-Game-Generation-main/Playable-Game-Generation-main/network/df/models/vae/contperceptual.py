@@ -1,7 +1,76 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
 
-from taming.modules.losses.vqperceptual import NLayerDiscriminator, weights_init, hinge_d_loss,vanilla_d_loss ,adopt_weight# TODO: taming dependency yes/no?
+try:
+    from taming.modules.losses.vqperceptual import NLayerDiscriminator, weights_init, hinge_d_loss,vanilla_d_loss ,adopt_weight
+except ImportError:
+    # 如果taming模块不可用，提供备用实现
+    print("Warning: taming module not found, using fallback implementations")
+    
+    def weights_init(m):
+        classname = m.__class__.__name__
+        if classname.find('Conv') != -1:
+            nn.init.normal_(m.weight.data, 0.0, 0.02)
+        elif classname.find('BatchNorm') != -1:
+            nn.init.normal_(m.weight.data, 1.0, 0.02)
+            nn.init.constant_(m.bias.data, 0)
+    
+    def hinge_d_loss(logits_real, logits_fake):
+        loss_real = torch.mean(F.relu(1. - logits_real))
+        loss_fake = torch.mean(F.relu(1. + logits_fake))
+        d_loss = 0.5 * (loss_real + loss_fake)
+        return d_loss
+    
+    def vanilla_d_loss(logits_real, logits_fake):
+        d_loss = 0.5 * (
+            torch.mean(torch.nn.functional.softplus(-logits_real)) +
+            torch.mean(torch.nn.functional.softplus(logits_fake)))
+        return d_loss
+    
+    def adopt_weight(weight, global_step, threshold=0, value=0.):
+        if global_step < threshold:
+            weight = value
+        return weight
+    
+    class NLayerDiscriminator(nn.Module):
+        def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
+            super(NLayerDiscriminator, self).__init__()
+            self.n_layers = n_layers
+            
+            kw = 4
+            padw = int(np.ceil((kw-1.0)/2))
+            sequence = [[nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]]
+            
+            nf = ndf
+            for n in range(1, n_layers):
+                nf_prev = nf
+                nf = min(nf * 2, 512)
+                sequence += [[
+                    nn.Conv2d(nf_prev, nf, kernel_size=kw, stride=2, padding=padw),
+                    norm_layer(nf), nn.LeakyReLU(0.2, True)
+                ]]
+            
+            nf_prev = nf
+            nf = min(nf * 2, 512)
+            sequence += [[
+                nn.Conv2d(nf_prev, nf, kernel_size=kw, stride=1, padding=padw),
+                norm_layer(nf),
+                nn.LeakyReLU(0.2, True)
+            ]]
+            
+            sequence += [[nn.Conv2d(nf, 1, kernel_size=kw, stride=1, padding=padw)]]
+            
+            for n in range(len(sequence)):
+                setattr(self, 'model'+str(n), nn.Sequential(*sequence[n]))
+        
+        def forward(self, input):
+            res = [input]
+            for n in range(self.n_layers+2):
+                model = getattr(self, 'model'+str(n))
+                res.append(model(res[-1]))
+            return res[1:]
 from .lpips import LPIPS
 
 class LPIPSWithDiscriminator(nn.Module):

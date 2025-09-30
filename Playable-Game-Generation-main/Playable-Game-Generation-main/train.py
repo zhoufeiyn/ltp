@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from typing import List, Tuple, Optional
 import re
 from network.df.models.vae.autoencoder import AutoencoderKL
+from network.df.models.diffusion.diffusion_forcing import DiffusionForcingBase
+from network.df.config.Config_DF import ConfigDF
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -214,11 +217,16 @@ def train():
     print("1.build video sequence")
     batch_data = build_video_sequence(dataset, num_frames)
 
-    model = get_model()
-    diffusion = model.df_model
-    vae = model.vae  
+    model_name = cfg.model_name
+    model_config = ConfigDF(model_name=model_name)
+    model = DiffusionForcingBase(model_config, device_obj)
+
+
+    vae = AutoencoderKL(image_key='observations')
+    vae = vae.to(device_obj)
+    vae.eval()
     epochs, lr, batch_size = cfg.epochs, cfg.lr, cfg.batch_size
-    opt = torch.optim.AdamW(diffusion.parameters(), lr)  # 只优化diffusion模型
+    opt = torch.optim.AdamW(model.parameters(), lr)  # 只优化diffusion模型
 
     print("2.VAE encoding images to latent space")
     # 将图像编码到潜在空间: [batch_size, num_frames, 3, 128, 128] -> [batch_size, num_frames, 4, 32, 32]
@@ -228,17 +236,19 @@ def train():
         images_flat = batch_data[0].reshape(-1, channels, h, w).to(device)
         
         # VAE编码
+        print(f"   输入图像形状: {images_flat.shape}")
         latent_dist = vae.encode(images_flat)
         latent_images = latent_dist.sample()  # 采样潜在表示
-        latent_images = latent_images * 0.18215  # 缩放因子
+        print(f"   VAE编码后形状: {latent_images.shape}")
+        latent_images = latent_images * 0.18215  # 缩放因子，如果VAE缩放因子有问题，尝试不同的值（0.18215, 1.0, 0.5等）
         
         # 重塑回 [batch_size, num_frames, 4, 32, 32]
-        latent_images = latent_images.reshape(batch_size_videos, num_frames, -1, h, w)
+        latent_images = latent_images.reshape(batch_size_videos, num_frames, 4, 32, 32)
+        print(f"   重塑后形状: {latent_images.shape}")
         
         # 更新batch_data[0]为编码后的潜在表示，保持在GPU上
         batch_data[0] = latent_images
-        
-        print(f"   VAE encoding completed: {batch_data[0].shape}")
+
 
     print("3.start training")
     num_videos = batch_data[0].shape[0]  # 总视频数量
@@ -257,17 +267,25 @@ def train():
             ]
             
             # 训练步骤
-            out_dict = diffusion.training_step(current_batch)
-            loss = out_dict["loss"]
-            
-            
-            # 反向传播
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-            
-            total_loss += loss.item()
-        
+            try:
+                out_dict = model.training_step(current_batch)
+                loss = out_dict["loss"]
+                
+                # 反向传播
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                
+                total_loss += loss.item()
+                print(f"   Batch {i//batch_size + 1}, Loss: {loss.item():.6f}")
+                
+            except Exception as e:
+                print(f"   ❌ 训练步骤出错: {e}")
+                print(f"   current_batch shapes:")
+                print(f"     images: {current_batch[0].shape}")
+                print(f"     actions: {current_batch[1].shape}")
+                print(f"     nonterminals: {current_batch[2].shape}")
+                raise e        
         avg_loss = total_loss / (num_videos // batch_size + (1 if num_videos % batch_size else 0))
         print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.6f}")
     print("Training completed!")
