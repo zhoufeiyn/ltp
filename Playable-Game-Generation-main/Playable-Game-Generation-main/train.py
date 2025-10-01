@@ -26,6 +26,9 @@ import imageio
 from model import get_model, get_data, get_web_img
 import os
 from datetime import datetime
+from infer_test import model_test
+
+
 device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
 # -----------------------------
@@ -326,6 +329,7 @@ def train():
     # 初始化最佳损失跟踪
     best_loss = float('inf')
     min_improvement = cfg.min_improvement  # 最小改善幅度
+    final_avg_loss = 0  # 用于保存最终的avg_loss
     
     for epoch in range(epochs):
         total_loss = 0
@@ -398,6 +402,7 @@ def train():
         # 计算一个epoch的平均损失
         if batch_count > 0 and (epoch+1) % 1 == 0: # print loss in every 1 epoch
             avg_loss = total_loss / batch_count
+            final_avg_loss = avg_loss  # 更新最终的avg_loss
             print(f"Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.6f}")
             
             # 检查是否是最佳模型
@@ -417,15 +422,22 @@ def train():
     
     print("Training completed!")
     
-    # 训练完成后保存最终模型（当epochs > 50时）
-    if epochs >= 20 and batch_count > 0:
+    # 训练完成后保存最终模型（当epochs >= 20时）
+    if epochs >= 20 and final_avg_loss > 0:
         print("💾 save final training model...")
-        save_model(model, epochs, avg_loss,  path=cfg.ckpt_path)
+        save_model(model, epochs, final_avg_loss, path=cfg.ckpt_path)
         print(f"📊 training statistics:")
         print(f"    total epochs: {epochs}")
         print(f"    best loss: {best_loss:.6f}")
-        print(f"    final loss: {avg_loss:.6f}")
+        print(f"    final loss: {final_avg_loss:.6f}")
         print(f"    total batches: {batch_count * epochs}")
+        
+        # 训练完成后进行测试
+ 
+        model_test(cfg.test_img_path, cfg.actions, model, device_obj, cfg.sample_step)
+
+
+    
 
 
 if __name__ == "__main__":

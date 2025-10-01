@@ -21,5 +21,10 @@ epochs: int = 20          # 测试epoch数量
 lr: float = 1e-3           # 提高学习率加速过拟合
 num_samples: int = 1  # 只生成一张样本
 
+sample_step: int = 4
+test_img_path: str = "./eval_data/demo1.png"
+actions = [20,20,20,20]
+
+
 grad_clip: float = 1.0
 ode_steps: int = 10        # 采样时 ODE 欧拉步数
