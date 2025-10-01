@@ -371,12 +371,12 @@ class Encoder(nn.Module):
                  **ignore_kwargs):
         super().__init__()
         if use_linear_attn: attn_type = "linear"
-        self.ch = ch
+        self.ch = ch # ch = 128
         self.temb_ch = 0
-        self.num_resolutions = len(ch_mult)
-        self.num_res_blocks = num_res_blocks
-        self.resolution = resolution
-        self.in_channels = in_channels
+        self.num_resolutions = len(ch_mult) # num_resolutions = 3
+        self.num_res_blocks = num_res_blocks # num_res_blocks = 2
+        self.resolution = resolution # resolution = 128
+        self.in_channels = in_channels # in_channels = 3
 
         # downsampling
         self.conv_in = torch.nn.Conv2d(in_channels,
@@ -386,15 +386,15 @@ class Encoder(nn.Module):
                                        padding=1)
 
         curr_res = resolution
-        in_ch_mult = (1,)+tuple(ch_mult)
+        in_ch_mult = (1,)+tuple(ch_mult) #(1,1,2,4)
         self.in_ch_mult = in_ch_mult
         self.down = nn.ModuleList()
-        for i_level in range(self.num_resolutions):
+        for i_level in range(self.num_resolutions): # i_level = 0, 1, 2
             block = nn.ModuleList()
             attn = nn.ModuleList()
-            block_in = ch*in_ch_mult[i_level]
-            block_out = ch*ch_mult[i_level]
-            for i_block in range(self.num_res_blocks):
+            block_in = ch*in_ch_mult[i_level] # block_in = 128*1 = 128
+            block_out = ch*ch_mult[i_level]    # block_out = 128*1 = 128
+            for i_block in range(self.num_res_blocks): # i_block = 0, 1
                 block.append(ResnetBlock(in_channels=block_in,
                                          out_channels=block_out,
                                          temb_channels=self.temb_ch,
@@ -435,7 +435,7 @@ class Encoder(nn.Module):
         temb = None
 
         # downsampling
-        hs = [self.conv_in(x)]
+        hs = [self.conv_in(x)] # [sample_num, 128, 128, 128]
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
                 h = self.down[i_level].block[i_block](hs[-1], temb)
@@ -446,15 +446,15 @@ class Encoder(nn.Module):
                 hs.append(self.down[i_level].downsample(hs[-1]))
 
         # middle
-        h = hs[-1]
-        h = self.mid.block_1(h, temb)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
+        h = hs[-1] # [sample_num, 512, 32, 32]
+        h = self.mid.block_1(h, temb)#[sample_num, 512, 32, 32]
+        h = self.mid.attn_1(h)#[sample_num, 512, 32, 32]
+        h = self.mid.block_2(h, temb)#[sample_num, 512, 32, 32]
 
         # end
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
+        h = self.norm_out(h)#[sample_num, 512, 32, 32]
+        h = nonlinearity(h)#[sample_num, 512, 32, 32]
+        h = self.conv_out(h) # [sample_num, 8, 32, 32]
         return h
 
 

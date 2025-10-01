@@ -24,8 +24,66 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import imageio
 from model import get_model, get_data, get_web_img
-
+import os
+from datetime import datetime
 device: str = "cuda" if torch.cuda.is_available() else "cpu"
+
+# -----------------------------
+# Model Saving Function
+# -----------------------------
+def save_model(model, epochs, final_loss,path=cfg.ckpt_path):
+    """保存训练好的模型到ckpt目录"""    
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    
+    # 生成文件名（包含时间戳和epoch信息）
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_filename = f"model_epoch{epochs}_{timestamp}.pth"
+    model_path = os.path.join(path, model_filename)
+    
+    # 准备保存的数据
+    save_data = {
+        'network_state_dict': model.state_dict(),
+        'epochs': epochs,
+        'loss': final_loss,
+        'model_name': cfg.model_name,
+        'batch_size': cfg.batch_size,
+        'num_frames': cfg.num_frames,
+    }
+    
+    # 保存模型
+    try:
+        torch.save(save_data, model_path)
+        print(f"✅ save model to {model_path}")
+
+    except Exception as e:
+        print(f"❌ save model failed: {e}")
+
+def save_best_checkpoint(model, epoch,  best_loss, is_best=False,path=cfg.ckpt_path):
+    """保存检查点（定期保存和最佳模型保存）"""
+
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    # 保存最新模型
+    if is_best:
+        latest_path = os.path.join(path, "best_model.pth")
+        checkpoint_data = {
+            'network_state_dict': model.state_dict(),
+            'epoch': epoch,
+            'loss': best_loss,
+            'model_name': cfg.model_name,
+            'batch_size': cfg.batch_size,
+            'num_frames': cfg.num_frames
+        }
+    
+        torch.save(checkpoint_data, latest_path)
+        print(f"🏆 save best model: epoch: {epoch},best loss = {best_loss:.6f}")
+    
+
 # -----------------------------
 # Custom Dataset for Mario Data
 # -----------------------------
@@ -191,7 +249,7 @@ def vae_encode(batch_data_images, vae_model, device):
             # 使用正确的缩放因子
             from network.df.config.Config import Config
             latent_images = latent_images * Config.scale_factor  # 0.64
-            print(f"   Using scale factor: {Config.scale_factor}")
+            # print(f"   Using scale factor: {Config.scale_factor}")
             
             # 重塑回 [batch_size, num_frames, 4, 32, 32]
             latent_images = latent_images.reshape(batch_size_videos, num_frames, 4, 32, 32)
@@ -207,7 +265,6 @@ def vae_encode(batch_data_images, vae_model, device):
 
 def train():
     device_obj = torch.device(device)
-    print(f"🚀 device: {device_obj}")
     dataset = MarioDataset(cfg.data_path, cfg.image_size)
 
     # video sequence parameters
@@ -217,7 +274,7 @@ def train():
 
     model_name = cfg.model_name
     model_config = ConfigDF(model_name=model_name)
-    
+    best_save_interval = cfg.best_save_interval
     # 使用Algorithm类加载完整的预训练模型（包含VAE和Diffusion）
     model = Algorithm(model_name, device_obj)
     
@@ -239,17 +296,14 @@ def train():
     
     if vae is not None:
         vae.eval()
-        print("✅ VAE already loaded")
+        for param in vae.parameters(): # freeze VAE parameters
+            param.requires_grad = False
+        print("✅ VAE already loaded，VAE parameters has been frozen")
     else:
         print("⚠️ Cannot find VAE model")
     epochs, lr, batch_size = cfg.epochs, cfg.lr, cfg.batch_size
     
-    # 只优化diffusion模型，冻结VAE
-    if vae is not None:
-        # 冻结VAE参数
-        for param in vae.parameters():
-            param.requires_grad = False
-        print("🔒 VAE parameters has been frozen")
+
     
     # 只优化diffusion模型参数
     diffusion_params = list(diffusion_model.parameters())
@@ -261,8 +315,8 @@ def train():
         print(f"   VAE parameters number: {sum(p.numel() for p in vae.parameters())} (frozen)")
 
 
-    print("---start training----")
-    print("---load dataset---")
+    print("---1. start training----")
+    print("---2. load dataset---")
     total_samples = len(dataset)
     # 检查是否有足够的数据
     if total_samples < num_frames:
@@ -270,12 +324,16 @@ def train():
         return
     # 计算可以创建多少个完整的视频序列
     num_videos = total_samples // num_frames
-    print(f"dataset loaded: {total_samples} samples, construct {num_videos} complete video sequences, each video has {num_frames} frames")
+    print(f"dataset loaded: {total_samples} samples, construct {num_videos} complete video sequences, each video has {num_frames} frames, construct {num_videos//batch_size} batches, batch size is {batch_size}")
     
+    # 初始化最佳损失跟踪
+    best_loss = float('inf')
+    min_improvement = cfg.min_improvement  # 最小改善幅度
     
     for epoch in range(epochs):
         total_loss = 0
         batch_count = 0
+        avg_loss = 0  # 初始化avg_loss
         
         # 遍历所有视频序列
         for i in range(0, total_samples, batch_size*num_frames):
@@ -286,7 +344,7 @@ def train():
             
             # 检查是否有足够的数据构建完整批次
             if i + batch_size*num_frames > total_samples:
-                print(f"⚠️ 跳过不完整的批次: 需要 {batch_size*num_frames} 个样本，但只有 {total_samples - i} 个样本")
+                print(f"⚠️ jump to next batch: need {batch_size*num_frames} samples, but only {total_samples - i} samples left")
                 break
             
             for batch_idx in range(batch_size):
@@ -295,7 +353,7 @@ def train():
                 
                 # 确保不超出数据集边界
                 if end_idx > total_samples:
-                    print(f"⚠️ 跳过不完整的视频序列: start_idx={start_idx}, end_idx={end_idx}, total_samples={total_samples}")
+                    print(f"⚠️ jump to next batch: start_idx={start_idx}, end_idx={end_idx}, total_samples={total_samples}")
                     break
                     
                 video_images, video_actions, video_nonterminals = build_video_sequence(dataset, start_idx, end_idx, num_frames)
@@ -328,23 +386,49 @@ def train():
                 
                 total_loss += loss.item()
                 batch_count += 1
-                print(f"   Batch {batch_count}, Loss: {loss.item():.6f}")
+                
+                if batch_count % 1 == 0:
+                    print(f"   Batch {batch_count}, Loss: {loss.item():.6f}") # print loss in every 1 batch
                 
             except Exception as e:
-                print(f"   ❌ 训练步骤出错: {e}")
+                print(f"   ❌ error in training step: {e}")
                 print(f"   batch_data shapes:")
                 print(f"     images: {batch_data[0].shape}")
                 print(f"     actions: {batch_data[1].shape}")
                 print(f"     nonterminals: {batch_data[2].shape}")
                 raise e        
         
-        # 计算平均损失
-        if batch_count > 0:
+        # 计算一个epoch的平均损失
+        if batch_count > 0 and (epoch+1) % 1 == 0: # print loss in every 1 epoch
             avg_loss = total_loss / batch_count
             print(f"Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.6f}")
-        else:
-            print(f"Epoch {epoch+1}/{epochs}, No batches processed")
+            
+            # 检查是否是最佳模型
+            is_best = avg_loss < best_loss
+            
+            if is_best:
+                # 立即更新最佳损失
+                improvement = (best_loss - avg_loss) / best_loss if best_loss != float('inf') else 1.0
+                best_loss = avg_loss
+                print(f"🎉 new best loss: {best_loss:.6f} (improvement: {improvement:.2%})")
+                
+                # 检查是否在保存间隔内且有显著改善
+                if (epoch + 1) % best_save_interval == 0 and improvement >= min_improvement:
+                    save_best_checkpoint(model, epoch + 1, best_loss, is_best=True, path=cfg.ckpt_path)
+                    print(f"💾 save best model (improvement: {improvement:.2%})")
+
+    
     print("Training completed!")
+    
+    # 训练完成后保存最终模型（当epochs > 50时）
+    if epochs > 20 and batch_count > 0:
+        print("💾 save final training model...")
+        save_model(model, epochs, avg_loss,  path=cfg.ckpt_path)
+        print(f"📊 training statistics:")
+        print(f"    total epochs: {epochs}")
+        print(f"    best loss: {best_loss:.6f}")
+        print(f"    final loss: {avg_loss:.6f}")
+        print(f"    total batches: {batch_count * epochs}")
 
 
 if __name__ == "__main__":

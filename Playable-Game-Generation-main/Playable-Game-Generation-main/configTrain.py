@@ -10,9 +10,14 @@ model_name: str = "df_z32_c1_dit_n11_mario_km_tanh_ldm"
 checkpoint_path: str= "ckpt/model.pth"
 out_dir: str = "./output"
 data_path: str = "./datatrain"
+ckpt_path: str = "./ckpt"
+
+
+best_save_interval: int = 5  # 最佳模型保存间隔（每5个epoch才保存一次最佳模型）
+min_improvement: float = 0.1  # 最小改善幅度（10%），只有改善超过这个幅度才保存最佳模型
 
 batch_size: int = 1        # 单张图像过拟合
-epochs: int = 2          # 测试2个epoch
+epochs: int = 20          # 测试epoch数量
 lr: float = 1e-3           # 提高学习率加速过拟合
 num_samples: int = 1  # 只生成一张样本
 
