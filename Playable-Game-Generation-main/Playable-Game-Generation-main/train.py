@@ -242,18 +242,15 @@ def vae_encode(batch_data_images, vae_model, device):
         
         # VAE编码
         if vae_model is not None:
-            print(f"   Input image shape: {images_flat.shape}")
-            latent_dist = vae_model.encode(images_flat)
-            latent_images = latent_dist.sample()  # 采样潜在表示
-            print(f"   VAE encoded shape: {latent_images.shape}")
+            latent_dist = vae_model.encode(images_flat) # [batch_size * num_frames, 3, 128, 128]
+            latent_images = latent_dist.sample()  # 采样潜在表示 [batch_size * num_frames, 4, 32, 32]
             # 使用正确的缩放因子
             from network.df.config.Config import Config
             latent_images = latent_images * Config.scale_factor  # 0.64
             # print(f"   Using scale factor: {Config.scale_factor}")
             
             # 重塑回 [batch_size, num_frames, 4, 32, 32]
-            latent_images = latent_images.reshape(batch_size_videos, num_frames, 4, 32, 32)
-            print(f"   Reshaped shape: {latent_images.shape}")
+            latent_images = latent_images.reshape(batch_size_videos, num_frames, 4, 32, 32) #[batch_size, num_frames, 4, 32, 32]
         else:
             print("⚠️ Cannot find VAE model, use original image")
             # 如果没有VAE，直接使用原始图像，但需要调整形状
@@ -324,7 +321,7 @@ def train():
         return
     # 计算可以创建多少个完整的视频序列
     num_videos = total_samples // num_frames
-    print(f"dataset loaded: {total_samples} samples, construct {num_videos} complete video sequences, each video has {num_frames} frames, construct {num_videos//batch_size} batches, batch size is {batch_size}")
+    print(f"dataset loaded: {total_samples} samples, construct {num_videos} complete video sequences, each video has {num_frames} frames, construct {num_videos//batch_size} batches, each batch has {batch_size} videos")
     
     # 初始化最佳损失跟踪
     best_loss = float('inf')
@@ -333,11 +330,11 @@ def train():
     for epoch in range(epochs):
         total_loss = 0
         batch_count = 0
-        avg_loss = 0  # 初始化avg_loss
-        
+        avg_loss = 0
+        print(f"---epoch: {epoch+1}---")
         # 遍历所有视频序列
         for i in range(0, total_samples, batch_size*num_frames):
-            print(f"---build video sequence in batch: {i}---")
+            
             batch_images = []
             batch_actions = []
             batch_nonterminals = []
@@ -372,7 +369,7 @@ def train():
            
 
             # 确保所有数据都在同一设备上
-            print("VAE encoding images to latent space")
+           
             batch_data[0] = vae_encode(batch_data[0], vae, device_obj)
             # 训练步骤
             try:
@@ -413,7 +410,7 @@ def train():
                 print(f"🎉 new best loss: {best_loss:.6f} (improvement: {improvement:.2%})")
                 
                 # 检查是否在保存间隔内且有显著改善
-                if (epoch + 1) % best_save_interval == 0 and improvement >= min_improvement:
+                if (epoch + 1) >= best_save_interval and improvement >= min_improvement:
                     save_best_checkpoint(model, epoch + 1, best_loss, is_best=True, path=cfg.ckpt_path)
                     print(f"💾 save best model (improvement: {improvement:.2%})")
 
@@ -421,7 +418,7 @@ def train():
     print("Training completed!")
     
     # 训练完成后保存最终模型（当epochs > 50时）
-    if epochs > 20 and batch_count > 0:
+    if epochs >= 20 and batch_count > 0:
         print("💾 save final training model...")
         save_model(model, epochs, avg_loss,  path=cfg.ckpt_path)
         print(f"📊 training statistics:")

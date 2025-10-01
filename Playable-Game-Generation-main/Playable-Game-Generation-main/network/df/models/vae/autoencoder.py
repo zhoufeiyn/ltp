@@ -41,8 +41,8 @@ class AutoencoderKL(nn.Module):
         print(f"Restored from {path}")
 
     def encode(self, x):
-        h = self.encoder(x)
-        moments = self.quant_conv(h)
+        h = self.encoder(x)#[sample_num, 8, 32, 32]
+        moments = self.quant_conv(h)# [sample_num, 8, 32, 32]
         posterior = DiagonalGaussianDistribution(moments)
         return posterior
 

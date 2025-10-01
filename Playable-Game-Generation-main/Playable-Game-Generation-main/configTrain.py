@@ -13,8 +13,8 @@ data_path: str = "./datatrain"
 ckpt_path: str = "./ckpt"
 
 
-best_save_interval: int = 5  # 最佳模型保存间隔（每5个epoch才保存一次最佳模型）
-min_improvement: float = 0.1  # 最小改善幅度（10%），只有改善超过这个幅度才保存最佳模型
+best_save_interval: int = 100  # 最佳模型保存间隔（大于num个epoch,且超过最小改善幅度，保存一次最佳模型）
+min_improvement: float = 0.1  # 最小改善幅度（10%）
 
 batch_size: int = 1        # 单张图像过拟合
 epochs: int = 20          # 测试epoch数量
