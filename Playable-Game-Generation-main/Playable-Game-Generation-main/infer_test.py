@@ -75,7 +75,7 @@ def init_simulator(model, batch):
 
 
 
-def model_test(img_path='eval_data/demo1.png', actions=['r','r','r','r'], model=None, device='cuda',sample_step =4):
+def model_test(img_path='eval_data/demo1.png', actions=['r','r','r','r'], model=None, device='cuda',sample_step =4,epochs=0):
     """测试训练好的模型"""
     
     # 检查输入参数
@@ -106,7 +106,7 @@ def model_test(img_path='eval_data/demo1.png', actions=['r','r','r','r'], model=
             
         if not os.path.isdir('./output/'):
             os.makedirs('./output/')
-        imageio.mimsave('./output/output.gif', img_list, duration=0.1)
+        imageio.mimsave(f'./output/output_{epochs}.gif', img_list, duration=0.2)
         print("✅ output.gif saved in ./output/")
         
     except Exception as e:

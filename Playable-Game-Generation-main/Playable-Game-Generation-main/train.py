@@ -133,6 +133,7 @@ class MarioDataset(Dataset):
                         valid_files += 1
                     else:
                         print(f"⚠️ can't extract action from filename: {file}")
+    
     def _map_action_to_playgenaction(self, action: int) -> int:
         """map action to playgenaction"""
         # 255 to 7
@@ -410,8 +411,8 @@ def train():
                 total_loss += loss.item()
                 batch_count += 1
                 
-                if batch_count % 1 == 0:
-                    print(f"   Batch {batch_count}, Loss: {loss.item():.6f}") # print loss in every 1 batch
+                # if batch_count % 1 == 0:
+                #     print(f"   Batch {batch_count}, Loss: {loss.item():.6f}") # print loss in every 1 batch
                 
             except Exception as e:
                 print(f"   ❌ error in training step: {e}")
@@ -421,13 +422,14 @@ def train():
                 print(f"     nonterminals: {batch_data[2].shape}")
                 raise e        
         
-        # 计算一个epoch的平均损失
-        if batch_count > 0 and (epoch+1) % 1 == 0: # print loss in every 1 epoch
+        # 计算打印every 20 epoch的平均损失
+        if batch_count > 0 and (epoch+1) % 20 == 0: # print loss in every 20 epoch
             avg_loss = total_loss / batch_count
             final_avg_loss = avg_loss  # 更新最终的avg_loss
             print(f"Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.6f}")
-            
-            # 检查是否是最佳模型
+
+
+            # 检查是否是最佳模型，如果是，且epoch> best_save_interval，则保存最佳模型
             is_best = avg_loss < best_loss
             
             if is_best:
@@ -440,12 +442,15 @@ def train():
                 if (epoch + 1) >= best_save_interval and improvement >= min_improvement:
                     save_best_checkpoint(model, epoch + 1, best_loss, is_best=True, path=cfg.ckpt_path)
                     print(f"💾 save best model (improvement: {improvement:.2%})")
+        # 每50个epoch run一次test,保存
+        if (epoch+1) % 50 == 0:
+            model_test(cfg.test_img_path, cfg.actions, model, device_obj, cfg.sample_step，epoch)
 
     
     print("Training completed!")
     
     # 训练完成后保存最终模型（当epochs >= 20时）
-    if epochs >= 20 and final_avg_loss > 0:
+    if epochs >= 200 and final_avg_loss > 0:
         print("💾 save final training model...")
         save_model(model, epochs, final_avg_loss, path=cfg.ckpt_path)
         print(f"📊 training statistics:")
@@ -456,7 +461,7 @@ def train():
         
         # 训练完成后进行测试
  
-        model_test(cfg.test_img_path, cfg.actions, model, device_obj, cfg.sample_step)
+        model_test(cfg.test_img_path, cfg.actions, model, device_obj, cfg.sample_step,epochs)
 
 
     
