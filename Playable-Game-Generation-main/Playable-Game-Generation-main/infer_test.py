@@ -34,7 +34,13 @@ def get_action_sequence(actions):
         ret.extend(get_jave_7action(a))
     return ret
 
-
+def preprocess_img(img):
+    target_size = (128, 128)
+    cropped_image = cv2.resize(img[:, :, :3], target_size) 
+    final_image = np.expand_dims(np.expand_dims(cropped_image.transpose(2, 0, 1), axis=0), axis=0)
+    final_image = torch.tensor(final_image, dtype=torch.float32, device=model.device)
+    batch_data = {'observations': final_image}
+    return batch_data
 
 
 
@@ -49,7 +55,7 @@ obs_shape = [3, 128, 128]
 
 
 def get_img_data(img_path, device):
-    img = Image.open(img_path)
+    img = Image.open(img_path).convert('RGB').resize((128, 128))
     img = np.array(img)
     img_data = img[np.newaxis, ...]  # (1, 128,128,3)
 
@@ -69,7 +75,7 @@ def init_simulator(model, batch):
 
 
 
-def model_test(img_path='eval_data/demo1.png', actions=[20,20,20,20], model=None, device='cuda',sample_step =4):
+def model_test(img_path='eval_data/demo1.png', actions=['r','r','r','r'], model=None, device='cuda',sample_step =4):
     """测试训练好的模型"""
     
     # 检查输入参数
@@ -92,7 +98,7 @@ def model_test(img_path='eval_data/demo1.png', actions=[20,20,20,20], model=None
         with torch.no_grad():
             obs,zeta = init_simulator(model,batch_data)
         img_list.append(get_web_img(obs[0].cpu().numpy()))
-        
+        actions=get_action_sequence(actions)
         for a in actions:
             with torch.no_grad():
                 obs, zeta = model.real_time_infer(zeta, torch.tensor([a]).long(), sample_step)
@@ -111,3 +117,13 @@ def model_test(img_path='eval_data/demo1.png', actions=[20,20,20,20], model=None
 
 
 
+if __name__ == "__main__":
+    model = get_model()
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model_test(
+        img_path='eval_data/demo1.png',
+        actions=['r','r','r','r'],
+        model=model,
+        device=device,
+        sample_step=4
+    )

@@ -133,15 +133,37 @@ class MarioDataset(Dataset):
                         valid_files += 1
                     else:
                         print(f"⚠️ can't extract action from filename: {file}")
+    def _map_action_to_playgenaction(self, action: int) -> int:
+        """map action to playgenaction"""
+        # 255 to 7
+        if action == 20: # right + B = 4+16=running right
+            return 1
+        elif action == 148: # right + B + A = 4+16+128=running jump right
+            return 2
+        elif action == 48: # left + B = 32+16=running left
+            return 3
+        elif action == 176: # left + B + A = 32+16+128=running jump left
+            return 4
+        elif action == 128: # A = 128=jump
+            return 5
+        elif action == 16: # B = 16=fire or run
+            return 6
+        elif action == 0: # null
+            return 0
 
+            
+        
     def _extract_action_from_filename(self, filename: str) -> Optional[int]:
         """extract action from filename"""
         # 文件名格式: Rafael_dp2a9j4i_e6_1-1_f1000_a20_2019-04-13_20-13-16.win.png
         pattern = r'_a(\d+)_'
         match = re.search(pattern, filename)
         if match:
-            return [int(match.group(1))]
+            action = int(match.group(1))
+            action_mapped = self._map_action_to_playgenaction(action)
+            return action_mapped
         return None
+        
     def __len__(self):
         return len(self.image_files)
     
