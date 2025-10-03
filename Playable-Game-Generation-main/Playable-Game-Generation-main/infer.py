@@ -62,8 +62,11 @@ def get_img_data(img_path, device):
 
 def init_simulator(model, batch):
     obs = batch["observations"]
+    # obs 形状 [1, 4, 128, 128]
     with torch.no_grad():
-        wm_env = model.init_wm(obs)
+        wm_env = model.init_wm(obs) 
+        # 调用 algorithm.py 中的 init_wm 函数，先使用vae对obs进行编码，然后调用 df_base.py 中的 init_df_model 
+        # wm_env 根据 df_base.py 中的 init_df_model 函数，初始化 wm_env, 返回值为 z, 形状 [1, 32, 32, 32]
         return obs, wm_env
 
 
@@ -94,7 +97,7 @@ if __name__ == "__main__":
     batch_data["observations"] = get_img_data(args.img, model.device)
     with torch.no_grad():
         obs, zeta = init_simulator(model, batch_data)
-    img_list.append(get_web_img(obs[0].cpu().numpy()))
+    img_list.append(get_web_img(obs[0].cpu().numpy())) # 将 obs 转换为图片，是第一帧
 
     for a in actions:
         with torch.no_grad():

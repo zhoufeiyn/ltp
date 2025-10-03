@@ -27,9 +27,64 @@ from model import get_model, get_data, get_web_img
 import os
 from datetime import datetime
 from infer_test import model_test
+import logging
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 device: str = "cuda" if torch.cuda.is_available() else "cpu"
+
+# -----------------------------
+# Logging Setup
+# -----------------------------
+def setup_logging():
+    """设置日志记录"""
+    # 创建logs目录
+    log_dir = "logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    # 生成日志文件名（包含时间戳）
+    timestamp = datetime.now().strftime("%Y%m%d_%H")
+    log_filename = f"training_log_{timestamp}.log"
+    log_path = os.path.join(log_dir, log_filename)
+    
+    # 配置日志格式
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_path, encoding='utf-8'),
+            logging.StreamHandler()  # 同时输出到控制台
+        ]
+    )
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"init log: {log_path}")
+    return logger, log_path
+
+def save_loss_curve(loss_history, data_save_epoch, save_path="output"):
+    """保存损失曲线图"""
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    
+    # 创建损失曲线图
+    plt.figure(figsize=(10, 6))
+    x_epochs = [(i + 1) * data_save_epoch for i in range(len(loss_history))]
+    plt.plot(x_epochs, loss_history, 'b-', linewidth=2, label='Training Loss')
+    plt.title('Training Loss Curve', fontsize=16)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    
+    # 保存图片
+    timestamp = datetime.now().strftime("%Y%m%d_%H")
+    loss_curve_path = os.path.join(save_path, f"loss_curve_{timestamp}.png")
+    plt.savefig(loss_curve_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"📈 Loss curve saved to: {loss_curve_path}")
+    return loss_curve_path
 
 # -----------------------------
 # Model Saving Function
@@ -42,7 +97,7 @@ def save_model(model, epochs, final_loss,path=cfg.ckpt_path):
 
     
     # 生成文件名（包含时间戳和epoch信息）
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H")
     model_filename = f"model_epoch{epochs}_{timestamp}.pth"
     model_path = os.path.join(path, model_filename)
     
@@ -237,7 +292,7 @@ def build_video_sequence(dataset, start_idx, end_idx, num_frames):
     for frame_idx in range(start_idx, end_idx):
         image, action = dataset[frame_idx]
         video_images.append(image)  # image shape: [3, 128, 128]
-        video_actions.append(action[0])  # action是列表，取第一个元素
+        video_actions.append(action)  # action是整数，直接使用
         video_nonterminals.append(True)  # 先都默认True
 
 
@@ -287,6 +342,9 @@ def vae_encode(batch_data_images, vae_model, device):
         return latent_images
 
 def train():
+    # 初始化日志记录
+    logger, log_path = setup_logging()
+    
     device_obj = torch.device(device)
     dataset = MarioDataset(cfg.data_path, cfg.image_size)
 
@@ -298,6 +356,8 @@ def train():
     model_name = cfg.model_name
     model_config = ConfigDF(model_name=model_name)
     best_save_interval = cfg.best_save_interval
+    data_save_epoch = cfg.data_save_epoch
+    gif_save_epoch = cfg.gif_save_epoch
     # 使用Algorithm类加载完整的预训练模型（包含VAE和Diffusion）
     model = Algorithm(model_name, device_obj)
     
@@ -331,6 +391,8 @@ def train():
     # 只优化diffusion模型参数
     diffusion_params = list(diffusion_model.parameters())
     opt = torch.optim.AdamW(diffusion_params, lr)
+    scheduler = ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=60, threshold=1e-4, threshold_mode='abs')
+
     
     print(f"   model device: {next(model.parameters()).device}")
     print(f"   Diffusion parameters number: {sum(p.numel() for p in diffusion_params if p.requires_grad)}")
@@ -354,11 +416,14 @@ def train():
     min_improvement = cfg.min_improvement  # 最小改善幅度
     final_avg_loss = 0  # 用于保存最终的avg_loss
     
+    # 初始化损失历史记录
+    loss_history = []  
+    
     for epoch in range(epochs):
         total_loss = 0
         batch_count = 0
         avg_loss = 0
-        print(f"---epoch: {epoch+1}---")
+
         # 遍历所有视频序列
         for i in range(0, total_samples, batch_size*num_frames):
             
@@ -422,46 +487,74 @@ def train():
                 print(f"     nonterminals: {batch_data[2].shape}")
                 raise e        
         
-        # 计算打印every 20 epoch的平均损失
-        if batch_count > 0 and (epoch+1) % 20 == 0: # print loss in every 20 epoch
+        # 计算每个epoch的平均损失并记录
+        if batch_count > 0:
             avg_loss = total_loss / batch_count
+            scheduler.step(avg_loss)
             final_avg_loss = avg_loss  # 更新最终的avg_loss
-            print(f"Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.6f}")
-
+            
+            # 每 cfg.data_save_epoch 个epoch打印一次损失并记录到历史
+            if (epoch+1) % data_save_epoch == 0:
+                loss_history.append(avg_loss)  # 只记录打印的损失值
+                loss_message = f"Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.6f}"
+                print(loss_message)
+                logger.info(loss_message)
 
             # 检查是否是最佳模型，如果是，且epoch> best_save_interval，则保存最佳模型
-            is_best = avg_loss < best_loss
-            
-            if is_best:
-                # 立即更新最佳损失
-                improvement = (best_loss - avg_loss) / best_loss if best_loss != float('inf') else 1.0
-                best_loss = avg_loss
-                print(f"🎉 new best loss: {best_loss:.6f} (improvement: {improvement:.2%})")
+                is_best = avg_loss < best_loss
                 
-                # 检查是否在保存间隔内且有显著改善
-                if (epoch + 1) >= best_save_interval and improvement >= min_improvement:
-                    save_best_checkpoint(model, epoch + 1, best_loss, is_best=True, path=cfg.ckpt_path)
-                    print(f"💾 save best model (improvement: {improvement:.2%})")
-        # 每50个epoch run一次test,保存
-        if (epoch+1) % 50 == 0:
-            model_test(cfg.test_img_path, cfg.actions, model, device_obj, cfg.sample_step，epoch)
+                if is_best:
+                    # 立即更新最佳损失
+                    improvement = (best_loss - avg_loss) / best_loss if best_loss != float('inf') else 1.0
+                    best_loss = avg_loss
+                    best_message = f"🎉 new best loss: {best_loss:.6f} (improvement: {improvement:.2%})"
+                    print(best_message)
+                    logger.info(best_message)
+                    
+                    # 检查是否在保存间隔内且有显著改善
+                    if (epoch + 1) >= best_save_interval and improvement >= min_improvement:
+                        save_best_checkpoint(model, epoch + 1, best_loss, is_best=True, path=cfg.ckpt_path)
+                        print(f"💾 save best model in {cfg.ckpt_path}(improvement: {improvement:.2%})")
+        
+        # 每gif_save_epoch个epoch run一次test,保存 gif
+        if (epoch+1) % gif_save_epoch == 0:
+            model_test(cfg.test_img_path, cfg.actions, model, device_obj, cfg.sample_step,epoch+1)
 
     
-    print("Training completed!")
+    completion_message = "Training completed!"
+    print(completion_message)
+    logger.info(completion_message)
     
-    # 训练完成后保存最终模型（当epochs >= 20时）
-    if epochs >= 200 and final_avg_loss > 0:
-        print("💾 save final training model...")
+
+    # 训练完成后保存最终模型
+    if epochs >= 1000 and final_avg_loss > 0:
+        save_message = "💾 save final training model..."
+        print(save_message)
+        logger.info(save_message)
+        
         save_model(model, epochs, final_avg_loss, path=cfg.ckpt_path)
+        
+        # 记录训练统计信息
+        stats_message = f"📊 training statistics: total epochs: {epochs}, best loss: {best_loss:.6f}, final loss: {final_avg_loss:.6f}, total batches: {batch_count * epochs}"
         print(f"📊 training statistics:")
         print(f"    total epochs: {epochs}")
         print(f"    best loss: {best_loss:.6f}")
         print(f"    final loss: {final_avg_loss:.6f}")
         print(f"    total batches: {batch_count * epochs}")
+        logger.info(stats_message)
         
         # 训练完成后进行测试
- 
         model_test(cfg.test_img_path, cfg.actions, model, device_obj, cfg.sample_step,epochs)
+    
+    # 保存最终损失曲线到output目录
+    if len(loss_history) > 0:
+        final_loss_curve_path = save_loss_curve(loss_history, data_save_epoch, save_path="output")
+        logger.info(f"Final loss curve saved to: {final_loss_curve_path}")
+    
+    # 记录日志文件路径
+    final_log_message = f"log path: {log_path}"
+    print(final_log_message)
+    logger.info(final_log_message)
 
 
     
