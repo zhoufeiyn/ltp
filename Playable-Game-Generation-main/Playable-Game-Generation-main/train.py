@@ -391,7 +391,7 @@ def train():
     # 只优化diffusion模型参数
     diffusion_params = list(diffusion_model.parameters())
     opt = torch.optim.AdamW(diffusion_params, lr)
-    scheduler = ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=60, threshold=1e-4, threshold_mode='abs')
+    # scheduler = ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=60, threshold=1e-4, threshold_mode='abs')
 
     
     print(f"   model device: {next(model.parameters()).device}")
@@ -490,14 +490,14 @@ def train():
         # 计算每个epoch的平均损失并记录
         if batch_count > 0:
             avg_loss = total_loss / batch_count
-            scheduler.step(avg_loss)
+            # scheduler.step(avg_loss)
             final_avg_loss = avg_loss  # 更新最终的avg_loss
             
             # 每 cfg.data_save_epoch 个epoch打印一次损失并记录到历史
             if (epoch+1) % data_save_epoch == 0:
                 loss_history.append(avg_loss)  # 只记录打印的损失值
                 loss_message = f"Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.6f}"
-                print(loss_message)
+                
                 logger.info(loss_message)
 
             # 检查是否是最佳模型，如果是，且epoch> best_save_interval，则保存最佳模型
@@ -507,14 +507,16 @@ def train():
                     # 立即更新最佳损失
                     improvement = (best_loss - avg_loss) / best_loss if best_loss != float('inf') else 1.0
                     best_loss = avg_loss
-                    best_message = f"🎉 new best loss: {best_loss:.6f} (improvement: {improvement:.2%})"
-                    print(best_message)
+                    best_message = f"This is the new best loss(improvement: {improvement:.2%})"
+                    
                     logger.info(best_message)
                     
                     # 检查是否在保存间隔内且有显著改善
                     if (epoch + 1) >= best_save_interval and improvement >= min_improvement:
                         save_best_checkpoint(model, epoch + 1, best_loss, is_best=True, path=cfg.ckpt_path)
-                        print(f"💾 save best model in {cfg.ckpt_path}(improvement: {improvement:.2%})")
+                        save_best_message = f"save best model in {cfg.ckpt_path}(improvement: {improvement:.2%})"
+                        
+                        logger.info(save_best_message)
         
         # 每gif_save_epoch个epoch run一次test,保存 gif
         if (epoch+1) % gif_save_epoch == 0:

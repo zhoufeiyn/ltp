@@ -25,12 +25,20 @@ def read_model(model_name, ckpt_name, action_space, device='cpu'):
             "network." + "df" + ".algorithm").Algorithm(model_name, device) # from network.df.algorithm import Algorithm
     else:
         raise NotImplementedError
-    state_dict = torch.load(
-        osp.join("ckpt", ckpt_name, "model.pth"),
-        map_location=torch.device(device),
-        weights_only=False
-    )
-    model.load_state_dict(state_dict['network_state_dict'],strict=False)
+    
+    model_path = osp.join("ckpt", ckpt_name, "model.pth")
+    if os.path.exists(model_path):
+        print(f"📥 Loading pretrained model from: {model_path}")
+        state_dict = torch.load(
+            model_path,
+            map_location=torch.device(device),
+            weights_only=False
+        )
+        model.load_state_dict(state_dict['network_state_dict'],strict=False)
+        print("✅ Model loaded successfully!")
+    else:
+        print(f"⚠️ Model checkpoint not found: {model_path}, using randomly initialized model")
+    
     model.eval().to(device)
     return model
 

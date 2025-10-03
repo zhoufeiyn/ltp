@@ -87,9 +87,9 @@ def model_test(img_path='eval_data/demo1.png', actions=['r','r','r','r'], model=
         print(f"❌ Error: Test image not found: {img_path}")
         return
     
-    print(f"🧪 Testing model with image: {img_path}")
-    print(f"    actions: {actions}")
-    print(f"    sample_step: {sample_step}")
+    # print(f"🧪 Testing model with image: {img_path}")
+    # print(f"    actions: {actions}")
+    # print(f"    sample_step: {sample_step}")
     
     try:
         img_list=[]

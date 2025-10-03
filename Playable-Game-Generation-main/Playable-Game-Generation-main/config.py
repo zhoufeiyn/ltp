@@ -1,5 +1,5 @@
 """User Model Global Config"""
-model_path = "./" # 0.64
+model_path = "df_z32_c1_dit_n11_mario_km_tanh_ldm" # checkpoint子目录名
 model_name = 'df_z32_c1_dit_n11_mario_km_tanh_ldm'
 action_space = 7
 
