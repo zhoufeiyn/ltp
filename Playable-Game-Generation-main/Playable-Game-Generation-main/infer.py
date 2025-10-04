@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import imageio
 from model import get_model, get_data, get_web_img
+import configTrain as cfg
 
 def get_jave_7action(key):
     if key == "r":
@@ -87,7 +88,7 @@ def arg():
 if __name__ == "__main__":
     args = arg()
     actions = get_action_sequence(args.actions)
-    sample_step = args.sample_step
+    sample_step = cfg.sample_step
 
     img_list = []
     model = get_model()

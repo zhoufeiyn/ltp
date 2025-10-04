@@ -148,7 +148,7 @@ class DiffusionForcingBase(nn.Module):
                 pg["lr"] = lr_scale * self.cfg.lr
 
     def _preprocess_batch(self, batch):
-        xs = batch[0] # 观测数据（b,frame_stack,c,h,w）
+        xs = batch[0] # 观测数据（b,numframe,c,h,w）
         batch_size, n_frames = xs.shape[:2]
 
         if n_frames % self.frame_stack != 0: # self.frame_stack = 1

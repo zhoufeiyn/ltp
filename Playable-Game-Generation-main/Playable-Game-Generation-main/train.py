@@ -354,7 +354,7 @@ def train():
 
 
     model_name = cfg.model_name
-    model_config = ConfigDF(model_name=model_name)
+    # model_config = ConfigDF(model_name=model_name)
     best_save_interval = cfg.best_save_interval
     data_save_epoch = cfg.data_save_epoch
     gif_save_epoch = cfg.gif_save_epoch
@@ -368,6 +368,12 @@ def train():
         state_dict = torch.load(checkpoint_path, map_location=device_obj, weights_only=False)
         model.load_state_dict(state_dict['network_state_dict'], strict=False)
         print("✅ Checkpoint loaded successfully！")
+        
+        # # 查看checkpoint里missing_keys和unexpected_keys
+        # missing_keys, unexpected_keys = model.load_state_dict(state_dict['network_state_dict'], strict=False)
+        # print(f"Missing keys: {missing_keys}")
+        # print(f"Unexpected keys: {unexpected_keys}")
+        
     else:
         print(f"⚠️ Checkpoint not found: {checkpoint_path},use random initialized model")
     model = model.to(device_obj)
@@ -376,6 +382,7 @@ def train():
     # 获取VAE和Diffusion模型
     vae = model.vae if hasattr(model, 'vae') else None
     diffusion_model = model.df_model
+
     
     if vae is not None:
         vae.eval()

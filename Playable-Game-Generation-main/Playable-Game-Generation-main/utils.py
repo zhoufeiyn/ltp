@@ -15,6 +15,7 @@ import pickle
 from scipy.ndimage import zoom
 import imageio
 from network.df.config.Config import Config
+from configTrain import checkpoint_path
 
 def read_model(model_name, ckpt_name, action_space, device='cpu'):
     if "iris" in model_name:
@@ -26,7 +27,8 @@ def read_model(model_name, ckpt_name, action_space, device='cpu'):
     else:
         raise NotImplementedError
     
-    model_path = osp.join("ckpt", ckpt_name, "model.pth")
+    # model_path = osp.join("ckpt", ckpt_name, "model.pth")
+    model_path = checkpoint_path
     if os.path.exists(model_path):
         print(f"📥 Loading pretrained model from: {model_path}")
         state_dict = torch.load(
