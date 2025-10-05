@@ -210,9 +210,10 @@ class DiffusionForcingBase(nn.Module):
         xs, conditions, masks, *_, init_z = self._preprocess_batch(batch)
         # xs: (frames, batch_size, fs*c,h,w), conditions: (n_frames, batch_size, fs*action_dim), fs=1
         # masks: (n_frames, batch_size), init_z: (batch_size,32,32,32)
+       
 
         n_frames, batch_size, _, *_ = xs.shape
-
+   
         xs_pred = []
         loss = []
         original_loss = []

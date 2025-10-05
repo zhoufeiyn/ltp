@@ -20,7 +20,7 @@ class DiffusionTransitionModel(nn.Module):
         super().__init__()
         self.config = config
         self.cfg = cfg
-        self.x_shape = x_shape # (4,32,32 )
+        self.x_shape = x_shape # (4*frame_stack=4*1=4,32,32 ), 默认frame_stack是1
         self.z_shape = z_shape # (32,32,32)
         self.external_cond_dim = external_cond_dim # 1
         self.mask_unet = cfg.mask_unet # false

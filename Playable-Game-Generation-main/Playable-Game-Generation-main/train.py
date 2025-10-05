@@ -373,6 +373,9 @@ def train():
         # missing_keys, unexpected_keys = model.load_state_dict(state_dict['network_state_dict'], strict=False)
         # print(f"Missing keys: {missing_keys}")
         # print(f"Unexpected keys: {unexpected_keys}")
+        # # 查看模型的所有参数
+        # for name, param in model.named_parameters():
+        #     print(f"{name}: {param.shape}, requires_grad={param.requires_grad}")
         
     else:
         print(f"⚠️ Checkpoint not found: {checkpoint_path},use random initialized model")
@@ -473,7 +476,7 @@ def train():
             # 训练步骤
             try:
                 out_dict = diffusion_model.training_step(batch_data)
-                loss = out_dict["loss"]
+                loss = out_dict["loss"]  # 用loss还是original_loss??
                 
                 # 反向传播
                 opt.zero_grad()

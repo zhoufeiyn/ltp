@@ -83,9 +83,9 @@ class DiT(nn.Module):
 
         # determine dimensions
         self.config = config
-        self.channels = channels
+        self.channels = channels #4
         self.self_condition = self_condition
-        self.z_cond_dim = z_cond_dim
+        self.z_cond_dim = z_cond_dim #32
         self.external_cond_dim = external_cond_dim
         # input_channels = channels * (2 if self_condition else 1)
         # input_channels += z_cond_dim if z_cond_dim else 0
@@ -148,7 +148,7 @@ class DiT(nn.Module):
 
     def forward(self, x, time, z_cond, external_cond=None, x_self_cond=None):
         # concantenate x, z_cond, x_self_cond
-        if self.self_condition:
+        if self.self_condition: # false
             x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x))
             x = torch.cat((x_self_cond, x), dim=1)
         if self.z_cond_dim:
@@ -165,7 +165,7 @@ class DiT(nn.Module):
                 external_cond_emb = self.external_cond_emb(external_cond.long()) # (batch_size, hidden_size//2=192)
             emb = torch.cat([emb, external_cond_emb], -1)# (batch_size, hidden_size=384)
 
-        x = self.dit(x,emb)
+        x = self.dit(x,emb) # (batch_size, 36,32,32)
         if self.config.use_tanh:
             x = self.tanh_layer(x)
         elif self.config.use_lrelu:

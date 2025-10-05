@@ -403,7 +403,7 @@ class TransitionDiT(DiT):
     ):
         super().__init__(
             model_name=model_name,
-            dim=dim,
+            dim=dim, #32
             channels=x_channel,# 4
             out_dim=z_channel, # 32
             external_cond_dim=external_cond_dim, # 1

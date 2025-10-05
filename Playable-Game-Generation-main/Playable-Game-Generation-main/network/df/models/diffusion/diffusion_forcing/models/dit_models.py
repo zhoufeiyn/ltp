@@ -150,14 +150,14 @@ class DiT(nn.Module):
         self,
         input_size=32,
         patch_size=2,
-        in_channels=4,
-        hidden_size=1152,
-        depth=28,
-        num_heads=16,
+        in_channels=4,  # inchannels=32+4=36
+        hidden_size=1152,  #384
+        depth=28,  # 12
+        num_heads=16, # num_head =6
         mlp_ratio=4.0,
         class_dropout_prob=0.1,
         num_classes=1000,
-        learn_sigma=True,
+        learn_sigma=True, #false
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -237,7 +237,7 @@ class DiT(nn.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2, N is batch size, D is hidden_dim
         # t = self.t_embedder(t)                   # (N, D)
         # y = self.y_embedder(y, self.training)    # (N, D)
         # c = t + y                                # (N, D)
@@ -399,11 +399,11 @@ def I16_S_1(**kwargs):
 def I128_S_8(**kwargs):
     return DiT(input_size=128,depth=12, hidden_size=384, patch_size=8, num_heads=6,learn_sigma=False, **kwargs)
 
-def I32_S_2(**kwargs):
+def I32_S_2(**kwargs): # use this
     return DiT(input_size=32,depth=12, hidden_size=384, patch_size=2, num_heads=6,learn_sigma=False, **kwargs)
 
 def I32_B_2(**kwargs):
-    return DiT(input_size=32,depth=12, hidden_size=768, patch_size=2, num_heads=12,learn_sigma=False, **kwargs)
+    return DiT(input_size=32,depth=12, hidden_size=768, patch_size=2, num_heads=12,learn_sigma=False, **kwargs)# in_channels = 4+32=36
 
 DiT_models = {
     # 'DiT-XL/2': DiT_XL_2,  'DiT-XL/4': DiT_XL_4,  'DiT-XL/8': DiT_XL_8,
